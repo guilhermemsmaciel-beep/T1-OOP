@@ -2,6 +2,7 @@
 #define PEIXE_H
 
 #include <string>
+#include "gtools.h"
 
 enum class EValidade {
   Fresco,
@@ -18,7 +19,7 @@ private:
   EValidade validade;
   float preco;
 public:
-  Peixe() : posicao({0, 0}), size({0, 0}), validade(EValidade::Fresco), preco(5) {};
+  Peixe() : posicao([0, 0]), size([0, 0]), validade(EValidade::Fresco), preco(5) {};
   void setNome(std::string name);
   void setPosicao(Vector2 pos);
   void setSize(Vector2 tam);
