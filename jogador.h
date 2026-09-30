@@ -14,7 +14,7 @@ private:
   Vector2 size;
   float dinheiro;
 public:
-  Jogador() : posicao([0, 0]), size([0, 0]), vida_atual(0), dinheiro(0) {}
+  Jogador() : posicao({0, 0}), size({0, 0}), vida_atual(0), dinheiro(0) {}
   void setNome(std::string name);
   void setVida(unsigned int vida);
   void setEstoque(Peixe peixe);
