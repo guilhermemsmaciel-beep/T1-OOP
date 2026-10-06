@@ -1,0 +1,70 @@
+enum class EDirecao {
+    Up,
+    Down,
+    Left,
+    Right
+};
+
+class Jogador{
+private:
+
+  std::string nome;
+  unsigned int vida_atual;
+  Vector2 posicao;
+  Vector2 size;
+  float dinheiro;
+  
+public:
+
+  Jogador() : posicao({0, 0}), size({0, 0}), vida_atual(0), dinheiro(0) {}
+  void setNome(std::string name);
+  void setVida(unsigned int vida);
+  void setPosicao(Vector2 pos) {
+      this->posicao = pos;
+  };
+  Vector2 getPos() {
+      return this->posicao;
+  }
+  void setSize(Vector2 tam);
+  void setDinheiro(float money);
+  
+  EDirecao lerComando(char comando);
+  void atualizarPos();
+
+};
+
+
+
+struct Mapa {
+    std::string horizontal = "_______________________";
+    std::string vertical = {"|                       |"};
+    
+    
+    void printMapa(Jogador& player) {
+        std::cout << ' ' << horizontal << std::endl;
+        for(int i =0; i < 7; i++) {
+            if(i == player.getPos().y)
+                vertical[player.getPos().x] = 'A';
+            std::cout << vertical << std::endl;
+        }
+        std::cout << '|' << horizontal << '|' << std::endl;
+    }
+};
+
+int main() {
+    
+    Mapa mapa;
+    Jogador jogador;
+    jogador.setPosicao({5, 6});
+    
+    mapa.printMapa(jogador);
+    
+    while(1) {
+        
+    }
+    
+    
+    
+    
+    return 0;
+}
