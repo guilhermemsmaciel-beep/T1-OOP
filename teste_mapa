@@ -1,0 +1,46 @@
+#ifndef MAPA_H
+#define MAPA_H
+
+#include <iostream>
+#include "jogador.h"
+
+#define LINHAS 7 
+#define COLUNAS 23
+
+struct Mapa {
+    int linhas = LINHAS;
+    int colunas = COLUNAS;
+    char wall = '|';
+    char floor = '_';
+    std::string horizontal = "_______________________";
+    std::string vertical = {"|                       |"};
+    
+    void printMapa(Jogador& player) {
+        system("clear");
+        float playerX = player.getPos().x;
+        float playerY = player.getPos().y;
+        char icon = player.getIcon();
+        std::cout << ' ' << horizontal << std::endl;
+        for(int i = 0; i < linhas; i++) {
+            if (i == linhas / 2) {
+                vertical[10] = '@';
+            }
+            if (i == playerY) {
+                if (vertical[playerX] != wall && vertical[playerX] != floor) { 
+                    vertical[playerX] = icon;
+                }
+            }
+            std::cout << vertical << std::endl;
+            vertical[10] = ' ';
+            vertical[playerX] = ' ';
+            if (playerY == linhas / 2 && playerX == 10) {
+                player.killPlayer();
+                icon = 'D';
+            }
+        }
+        std::cout << '|' << horizontal << '|' << std::endl;
+    }
+};
+
+
+#endif
