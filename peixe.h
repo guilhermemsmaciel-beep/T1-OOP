@@ -2,30 +2,48 @@
 #define PEIXE_H
 
 #include <string>
-#include "gtools.h"
 
-enum class EValidade {
-  Fresco,
-  Passado,
-  Podre
+enum class Validade {
+    Fresco,
+    Passado,
+    Podre
 };
 
 class Peixe {
 private:
-  std::string nome;
-  Vector2 posicao;
-  Vector2 size;
-  std::string descricao;
-  EValidade validade;
-  float preco;
+    std::string nome;
+    Texture2D textura;
+    Rectangle rec;
+    std::string descricao;
+    Validade validade;
+    float valor;
+    bool bigger = false;
+    // T dificuldade;
 public:
-  Peixe() : posicao({0, 0}), size({0, 0}), validade(EValidade::Fresco), preco(5) {};
-  void setNome(std::string name);
-  void setPosicao(Vector2 pos);
-  void setSize(Vector2 tam);
-  void setDescricao(std::string text);
-  void setValidade();
-  void setPreco();
-}
+    Peixe() : valor(0) {}
+    Peixe(float x, float y, float sx, float sy) : valor(0) {
+        rec.x = x;
+        rec.y = y;
+        rec.width = sx;
+        rec.height = sy;
+        textura = LoadTexture("wabbit_alpha.png");
+    }
+    void Swim() {
+        if(rec.x > 800) {
+            bigger = true;
+        }
+        if(rec.x < 0) {
+            bigger = false;
+        }
+        if(bigger) rec.x -= 2.0;
+        else rec.x += 2.0;
+    }
+
+    void Desenhar() {
+        DrawRectangle(rec.x, rec.y, rec.width, rec.height, GREEN);
+        //DrawTexture(textura, rec.x, rec.y, WHITE);
+    };
+};
+
 
 #endif
