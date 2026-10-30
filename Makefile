@@ -4,7 +4,7 @@ SRC      := $(wildcard src/*.cpp)
 OBJ      := $(patsubst src/%.cpp,build/%.o,$(SRC))
 BIN      := fishz
 
-.PHONY: all run clean
+.PHONY: all run test clean
 
 all: $(BIN)
 
@@ -19,6 +19,11 @@ build:
 
 run: $(BIN)
 	./$(BIN)
+
+# Testes: compila tudo menos o main.cpp junto com tests/testes.cpp
+test: $(filter-out build/main.o,$(OBJ)) tests/testes.cpp
+	$(CXX) $(CXXFLAGS) $^ -o build/testes
+	./build/testes
 
 clean:
 	rm -rf build $(BIN)
