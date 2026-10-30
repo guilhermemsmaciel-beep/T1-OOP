@@ -1,198 +1,259 @@
-#include <iostream>
-#include <fstream>
-#include <unistd.h>
-#include <cstdlib>
-
 #include "jogo.h"
-#include "json.hpp"
-#include "edificuldade.h"
+#include "excecoes.h"
 
+#include <cstdio>
+#include <cstdlib>
+#include <functional>
+#include <iostream>
 
-// Default window size
-#define WINDOW_X 800.0
-#define WINDOW_Y 600.0
-
-// Default object size
-#define OBJ_X 40.0
-#define OBJ_Y 40.0
-
-// TITLE SCREEN
-#define TITLE_CENTRO_X 325
-#define TITLE_CENTRO_Y 250
-#define TITLE_FONTSIZE 40
-
-#define SUB_CENTRO_X 250
-#define SUB_CENTRO_Y 300
-#define SUB_FONTSIZE 30
-
-#define RECT_CENTRO_X 235
-#define RECT_CENTRO_Y 250
-#define RECT_SIZE_X 350
-#define RECT_SIZE_Y 100
-
-//using json = nlohmann::json;
-
-// Jogo::Jogo(Mapa* map, Pescador& p) : player(p), mapa(map) 
-// {
-//     //Left blank on purpose
-//     screen = mapa;
-// }
-
-
-
-// void Jogo::addObject(Object obj) {
-//     objetos.push_back(obj);
-//     //objs.insert(std::pair<Mapa*, std::vector<Object>>(mapa, objetos));
-// }
-
-// int Jogo::getObjetosSize() {
-//     return objetos.size();
-// }
-
-
-
-
-
-
-
-
-    // for(auto it = objetos.begin(); it != objetos.end(); it++) {
-    //     Object tmp(it[0], it[1], OBJ_X, OBJ_Y);
-    //     aux.push_back(tmp);
-    // }
-    // objs.insert(std::pair<Mapa*, std::vector<Object>>(mapa, aux));
-
-
-
-
-void Jogo::game_preparation() {
-    screen = new Mapa(player);
-    mapas.push_back("mapa.txt");
-    mapas.push_back("fishing_map.txt");
+// O jogo roda com o terminal em modo "cbreak" (sem Enter e sem eco),
+// assim cada tecla chega na hora. O modo normal só volta para digitar o nome.
+void Jogo::modoJogo() {
+    system("stty -icanon -echo");
 }
 
+void Jogo::modoTexto() {
+    system("stty sane");
+}
+
+// LAMBDA: lê uma única tecla
+static auto lerTecla = []() -> char {
+    return static_cast<char>(std::getchar());
+};
+
+static void esperarTecla() {
+    std::cout << "\n(aperte qualquer tecla para continuar)" << std::endl;
+    lerTecla();
+}
+
+Jogo::Jogo(Pescador& p) : screen(nullptr), player(p), venceu(false) {}
+
+void Jogo::game_preparation() {
+    screen = std::make_unique<Mapa>(player);
+    mapas.push_back("assets/mapas/vila.txt");
+    mapas.push_back("assets/mapas/lago.txt");
+    screen->loadMapas(mapas);
+}
 
 void Jogo::game_intro() {
-
+    system("clear");
     std::string nome;
-    char answer;
+    char answer = 'n';
 
-    std::cout << "Welcome to Fishz!\nPlease name your character:\n";    
-    std::cin >> nome;
-    std::cout << "Are you sure of the name " << nome << "?" << std::endl;
-
-    std::cin >> answer;
-    if (answer == 'N' || answer == 'n') {
-        std::cout << "Please type your name: " << std::endl;
-        std::cin >> nome;
+    std::cout << "Bem-vindo ao Fishz!\n" << std::endl;
+    while (answer != 's' && answer != 'S') {
+        modoTexto();
+        std::cout << "Qual o nome do seu personagem? ";
+        std::getline(std::cin, nome);
+        modoJogo();
+        if (nome.empty()) continue;
+        std::cout << "Tem certeza que quer se chamar " << nome << "? (s/n) ";
+        answer = lerTecla();
+        std::cout << answer << std::endl;
     }
     player.setNome(nome);
 
-    std::cout << "Alright " << player.getNome() << ", let's get you started. First, your most important tool, your fishing rod!" <<std::endl;
-    std::cout << "Here, take this. It's not the fanciest, but it'll do the job with smaller fish" << std::endl;
+    std::cout << "\nCerto, " << player.getNome()
+              << ". Primeiro, a sua ferramenta mais importante: a vara de pesca!" << std::endl;
+    std::cout << "Toma essa aqui. Nao e a mais bonita, mas pega os peixes pequenos.\n" << std::endl;
 
-    Rod *rod = new Rod();
-    rod->itemDescription();
-    player.addRod(rod);
+    player.addRod(std::make_unique<Rod>());
+    player.getRod()->itemDescription();
 
-    std::cout << "I just added it to your inventory. If you want you can check it, just press I" << std::endl;
-
-    std::cin >> answer;
-    if (answer == 'I' || answer == 'i') {
-        player.printInventario();
-        std::cout << "Yes, that's it! Ok, now i will teach how to fish. Let's go to the pond" << std::endl;
-    } else {
-        sleep(5);
-        std::cout << "Anyways. Now, let's get to the point. I'll teach you how to catch fish, let's go to the pond" << std::endl;
-    }
-
-
-    player.setPos(19, 3);
-    screen->loadMapas(mapas);
-    screen->loadMapa();
-    screen->printMapa();
-    try {
-        while (player.getPos() != screen->getObjectPos(0)) {
-            system("stty raw");
-            char comando = std::getchar();
-            if (comando == 'e') {
-                break;
-            }
-            system("stty cooked");
-            player.atualizarPos(comando, screen->getMapa());
-            screen->printMapa();
-
-        }
-    } catch (std::out_of_range& e) {
-        std::cerr << "Erro no loop de print" << e.what() << std::endl;
-    }
-    
-    system("stty sane");
-    std::cout << player.getPosX() << ", " << player.getPosY() << std::endl;
-    std::cout << screen->getObjectPos(0).x << ", " << screen->getObjectPos(0).y << std::endl;
-    //system("stty cooked");
-    
-
-
+    std::cout << "\nSeu objetivo: pescar um DOURADO, o peixe que vive no fundo do lago." << std::endl;
+    std::cout << "Venda o que pescar no mercado ($) e compre varas melhores na loja (L)." << std::endl;
+    std::cout << "Cuidado: a cada ida ao lago os peixes guardados envelhecem!" << std::endl;
+    esperarTecla();
 }
 
+void Jogo::printHUD() const {
+    const Rod* rod = player.getRod();
+    std::cout << player.getNome()
+              << " | Carteira: $" << player.getCarteira()
+              << " | Estoque: " << player.getEstoque().size() << "/" << Pescador::CAPACIDADE_ESTOQUE;
+    if (rod != nullptr)
+        std::cout << " | Vara: " << rod->getNome()
+                  << " (prof. " << rod->getDepthLimit() << ")";
+    std::cout << '\n';
+
+    if (screen->getCurrentID() == "lago")
+        std::cout << "[WASD] move o anzol  [E] volta para a vila";
+    else
+        std::cout << "[WASD] anda  [I] inventario  [Q] sair   O = lago  $ = mercado  L = loja";
+    std::cout << '\n';
+
+    if (!mensagem.empty())
+        std::cout << "\n>> " << mensagem << '\n';
+    std::cout.flush();
+}
 
 void Jogo::run_fishing_game() {
-    screen->fishingGameTest();
-    player.setPos(10, 4);
-    while (1) {
-        system("stty raw");
-        char comando = std::getchar();
-        if (comando == 'e') {
+    // ir ao lago faz o tempo passar: o estoque envelhece
+    player.envelhecerEstoque();
+    unsigned int podres = player.contarPodres();
+
+    screen->changeMapa("lago");
+    screen->spawnPeixes();
+    player.setPos(screen->getSpawn());
+    player.setAncora(screen->getSpawn());
+
+    mensagem = "Encoste o anzol (J) em um peixe para fisga-lo.";
+    if (podres > 0)
+        mensagem += " Voce tem " + std::to_string(podres) + " peixe(s) podre(s) no estoque!";
+
+    // LAMBDA que captura 'this': tenta fisgar o peixe que está no anzol
+    auto tentarFisgar = [this]() {
+        Peixe pescado(Vector2(), Dificuldade::Easy);
+        if (!screen->pescarPeixeEm(player.getPos(), pescado)) return;
+
+        try {
+            player.guardarPeixe(pescado);
+            mensagem = "Voce pescou um " + pescado.getNome() + "! (vale $" +
+                       std::to_string((int)pescado.getValor()) + ")";
+            if (pescado.getDificuldade() == Dificuldade::Hard)
+                venceu = true;
+        } catch (const EstoqueCheioException& e) {
+            mensagem = std::string(e.what()) + " O " + pescado.getNome() + " escapou.";
+        }
+    };
+
+    while (!venceu) {
+        screen->printMapa();
+        printHUD();
+
+        char comando = lerTecla();
+        if (comando == 'e' || comando == 'E') break;
+
+        player.atualizarPos(comando, screen->getMapa(), '~');
+        tentarFisgar();
+        screen->fishSwim();
+        tentarFisgar();
+
+        if (screen->quantidadePeixes() == 0 && !venceu) {
+            screen->printMapa();
+            printHUD();
+            std::cout << "\nO lago ficou vazio por hoje. Voltando para a vila..." << std::endl;
+            esperarTecla();
             break;
         }
-        system("stty cooked");
-        screen->peixesSwim();
-        screen->printMapa();
-        player.atualizarPos(comando, screen->getMapa(), 'y');
-        
     }
-    system("stty sane");
 
+    if (!venceu)
+        mensagem = "De volta a vila.";
+    screen->changeMapa("vila");
 }
 
+void Jogo::mercado() {
+    system("clear");
+    std::cout << "=== MERCADO ===\n" << std::endl;
+
+    if (player.getEstoque().empty()) {
+        std::cout << "Voce nao tem nenhum peixe para vender. Va pescar!" << std::endl;
+        esperarTecla();
+        return;
+    }
+
+    for (const auto& peixe : player.getEstoque())
+        peixe.printFish();
+
+    unsigned int podres = player.contarPodres();
+    if (podres > 0)
+        std::cout << "\n" << podres << " peixe(s) podre(s) vao para o lixo." << std::endl;
+
+    std::cout << "\nVender tudo? (s/n) ";
+    char c = lerTecla();
+    std::cout << c << std::endl;
+    if (c == 's' || c == 'S') {
+        float ganho = player.venderEstoque();
+        mensagem = "Voce vendeu o estoque por $" + std::to_string((int)ganho) + ".";
+    } else {
+        mensagem = "Volte quando quiser vender.";
+    }
+}
+
+void Jogo::loja() {
+    // Catálogo da loja: cada oferta guarda uma LAMBDA que fabrica a vara
+    struct Oferta {
+        std::string nome;
+        float preco;
+        unsigned int profundidade;
+        std::function<std::unique_ptr<Rod>()> criar;
+    };
+
+    const std::vector<Oferta> ofertas = {
+        {"Vara de Carbono", 40, 6, []() {
+             return std::make_unique<Rod>("Vara de Carbono",
+                 "Leve e resistente. Alcanca as tilapias do meio do lago.", 40, 6, 10);
+         }},
+        {"Vara Lendaria", 150, 9, []() {
+             return std::make_unique<Rod>("Vara Lendaria",
+                 "Dizem que com ela da para pescar ate o Dourado.", 150, 9, 14);
+         }},
+    };
+
+    system("clear");
+    std::cout << "=== LOJA DE VARAS ===   Carteira: $" << player.getCarteira() << "\n" << std::endl;
+    for (unsigned int i = 0; i < ofertas.size(); i++)
+        std::cout << "[" << i + 1 << "] " << ofertas[i].nome << " - $" << ofertas[i].preco
+                  << " (profundidade " << ofertas[i].profundidade << ")" << std::endl;
+    std::cout << "[outra tecla] sair" << std::endl;
+
+    char c = lerTecla();
+    unsigned int escolha = c - '1';
+    if (escolha >= ofertas.size()) {
+        mensagem = "Volte sempre!";
+        return;
+    }
+
+    const Oferta& oferta = ofertas[escolha];
+    if (player.getRod() != nullptr && player.getRod()->getDepthLimit() >= oferta.profundidade) {
+        mensagem = "Voce ja tem uma vara igual ou melhor que essa.";
+        return;
+    }
+
+    try {
+        player.comprarRod(oferta.criar());
+        mensagem = "Voce comprou a " + oferta.nome + "! Ela ja esta equipada.";
+    } catch (const SaldoInsuficienteException& e) {
+        mensagem = e.what();
+    }
+}
 
 void Jogo::run_game() {
+    screen->changeMapa("vila");
+    player.setPos(screen->getSpawn());
+    mensagem = "Va ate o lago (O) para pescar.";
 
+    while (player.isAlive() && !venceu) {
+        screen->printMapa();
+        printHUD();
+
+        char comando = lerTecla();
+        if (comando == 'q' || comando == 'Q') break;
+        if (comando == 'i' || comando == 'I') {
+            system("clear");
+            player.printInventario();
+            esperarTecla();
+            continue;
+        }
+
+        Vector2 anterior = player.getPos();
+        player.atualizarPos(comando, screen->getMapa());
+
+        switch (screen->objetoEm(player.getPos())) {
+            case 'O': run_fishing_game(); break;
+            case '$': mercado(); break;
+            case 'L': loja(); break;
+            default: continue;
+        }
+        // depois de interagir, o jogador volta um passo para não entrar de novo
+        player.setPos(anterior);
+    }
+
+    system("clear");
+    if (venceu) {
+        std::cout << "PARABENS, " << player.getNome() << "! Voce pescou o Dourado!\n" << std::endl;
+    }
+    std::cout << "Fim de jogo. Obrigado por jogar Fishz!" << std::endl;
+    player.printInventario();
 }
-
-
-//rightmost limit = map limit - player size / 2
-// leftmost limit = 0;
-//upmost limit = 0
-//downmost limit = map limit - player size / 2
-
-int main() {
-
-    // Pescador jogador(400.0f, 300.0f, 70.0f, 70.0f);
-    // //Object obj(500.0f, 400.0f, 40.0f, 40.0f);
-    // Mapa* mapa = new Mapa("centro", WINDOW_X, WINDOW_Y, BLUE);
-    // //mapa->addObject(obj);
-    // //mapa->setRight();
-    // //mapa->setDirections();
-    // //mapa->addObject(obj);
-
-    // Jogo pesca(mapa, jogador);
-    // pesca.SetMapa("map_objects.json");
-    // //pesca.addObject(obj);
-
-    Pescador player;
-    Jogo fishz(player);
-
-    fishz.game_preparation();
-    fishz.game_intro();
-    fishz.run_fishing_game();
-
-
-    return 0;
-}
-
-
-//g++ -Iinclude pescador.cpp jogo.cpp -o teste
-
-
