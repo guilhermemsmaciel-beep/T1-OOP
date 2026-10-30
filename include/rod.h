@@ -18,6 +18,7 @@ public:
     unsigned int getDepthLimit() const;
     unsigned int getDistanceLimit() const;
 
+    std::string categoria() const override;
     void itemDescription() const override;
 };
 

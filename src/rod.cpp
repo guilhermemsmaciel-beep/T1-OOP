@@ -18,6 +18,10 @@ unsigned int Rod::getDistanceLimit() const {
     return distance_limit;
 }
 
+std::string Rod::categoria() const {
+    return "Vara";
+}
+
 void Rod::itemDescription() const {
     Item::itemDescription();
     std::cout << "    Profundidade: " << depth_limit

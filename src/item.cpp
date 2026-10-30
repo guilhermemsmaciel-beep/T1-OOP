@@ -15,6 +15,6 @@ float Item::getValor() const {
 }
 
 void Item::itemDescription() const {
-    std::cout << "  " << nome << " ($" << valor << ")" << std::endl;
+    std::cout << "  [" << categoria() << "] " << nome << " ($" << valor << ")" << std::endl;
     std::cout << "    " << descricao << std::endl;
 }
