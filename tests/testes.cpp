@@ -6,6 +6,9 @@
 #include <memory>
 
 #include "excecoes.h"
+#include "fisgada.h"
+#include "isca.h"
+#include "npc.h"
 #include "mapa.h"
 #include "pescador.h"
 #include "rod.h"
@@ -55,7 +58,7 @@ static void testaCompraDeVara() {
 
     bool lancou = false;
     try {
-        p.comprarRod(std::make_unique<Rod>("Carbono", "", 40, 6, 10));
+        p.comprar(std::make_unique<Rod>("Carbono", "", 40, 6, 10));
     } catch (const SaldoInsuficienteException&) {
         lancou = true;
     }
@@ -64,7 +67,7 @@ static void testaCompraDeVara() {
 
     for (int i = 0; i < 8; i++) p.guardarPeixe(Peixe(Vector2(), Dificuldade::Easy));
     p.venderEstoque();  // $40
-    p.comprarRod(std::make_unique<Rod>("Carbono", "", 40, 6, 10));
+    p.comprar(std::make_unique<Rod>("Carbono", "", 40, 6, 10));
     assert(p.getRod()->getDepthLimit() == 6);
     assert(p.getCarteira() == 0);
     std::cout << "[ok] compra de vara e SaldoInsuficienteException" << std::endl;
@@ -124,6 +127,93 @@ static void testaLimiteDaVara() {
     std::cout << "[ok] limite de profundidade da vara" << std::endl;
 }
 
+static void testaIscas() {
+    Pescador p;
+    assert(p.usarIsca() == 0);  // sem isca, sem bônus
+
+    p.addIsca(std::make_unique<Isca>("Minhoca", "", 5, 2, 2));
+    p.addIsca(std::make_unique<Isca>("Minhoca", "", 5, 2, 1));  // empilha
+    p.addIsca(std::make_unique<Isca>("Isca Artificial", "", 20, 5, 1));
+    assert(p.getTotalIscas() == 4);
+
+    assert(p.usarIsca() == 5);  // usa primeiro a melhor
+    assert(p.usarIsca() == 2);  // artificial acabou, passa para minhoca
+    assert(p.getTotalIscas() == 2);
+    std::cout << "[ok] iscas (empilhar, usar a melhor, remover quando acaba)" << std::endl;
+}
+
+static void testaCompraPolimorfica() {
+    Pescador p;
+    p.receber(100);
+    std::unique_ptr<Item> isca = std::make_unique<Isca>("Minhoca", "", 5, 2, 5);
+    p.comprar(std::move(isca));                     // vira isca no inventário
+    assert(p.getTotalIscas() == 5);
+
+    std::unique_ptr<Item> vara = std::make_unique<Rod>("Carbono", "", 40, 6, 10);
+    p.comprar(std::move(vara));                     // vira a vara equipada
+    assert(p.getRod()->getDepthLimit() == 6);
+    assert(p.getCarteira() == 55);
+    std::cout << "[ok] compra polimorfica (Item -> Rod / Isca)" << std::endl;
+}
+
+static void testaEnergia() {
+    Pescador p;
+    for (int i = 0; i < 5; i++) p.gastarEnergia(20);
+    assert(p.getEnergia() == 0);
+
+    bool lancou = false;
+    try {
+        p.gastarEnergia(20);
+    } catch (const SemEnergiaException&) {
+        lancou = true;
+    }
+    assert(lancou);
+    p.descansar();
+    assert(p.getEnergia() == Pescador::ENERGIA_MAX);
+    std::cout << "[ok] energia e SemEnergiaException" << std::endl;
+}
+
+static void testaMissoes() {
+    Npc npc(Vector2(1, 1), "Seu Ze");
+    Pescador p;
+    assert(npc.temMissao());
+    const Missao& m = npc.missaoAtual();
+    assert(m.tipo == Dificuldade::Easy && m.quantidade == 3);
+
+    p.guardarPeixe(Peixe(Vector2(), Dificuldade::Easy));
+    p.guardarPeixe(Peixe(Vector2(), Dificuldade::Easy));
+    assert(!p.entregarPeixes(Dificuldade::Easy, 3));  // só tem 2
+    p.guardarPeixe(Peixe(Vector2(), Dificuldade::Medium));
+    p.guardarPeixe(Peixe(Vector2(), Dificuldade::Easy));
+    assert(p.entregarPeixes(Dificuldade::Easy, 3));
+    assert(p.getEstoque().size() == 1);              // sobrou a tilápia
+    npc.concluirMissao();
+    assert(npc.missoesConcluidas() == 1);
+
+    npc.concluirMissao();
+    assert(!npc.temMissao());
+    std::cout << "[ok] NPC e missoes" << std::endl;
+}
+
+static void testaFisgada() {
+    std::mt19937 rng(42);
+    Fisgada facil(Dificuldade::Easy, 0, rng);
+    Fisgada dificil(Dificuldade::Hard, 0, rng);
+    Fisgada comIsca(Dificuldade::Hard, 5, rng);
+    assert(facil.getZonaTamanho() > dificil.getZonaTamanho());
+    assert(comIsca.getZonaTamanho() == dificil.getZonaTamanho() + 5);
+    assert(facil.getIntervaloMs() > dificil.getIntervaloMs());
+
+    // o marcador passa pela zona verde em algum momento
+    bool passouNaZona = false;
+    while (!facil.esgotou()) {
+        if (facil.dentroDaZona()) passouNaZona = true;
+        facil.avancar();
+    }
+    assert(passouNaZona);
+    std::cout << "[ok] fisgada (zona, velocidade e fuga do peixe)" << std::endl;
+}
+
 int main() {
     testaVector2();
     testaEnvelhecimentoEVenda();
@@ -131,6 +221,11 @@ int main() {
     testaCompraDeVara();
     testaMapa();
     testaLimiteDaVara();
+    testaIscas();
+    testaCompraPolimorfica();
+    testaEnergia();
+    testaMissoes();
+    testaFisgada();
     std::cout << "\nTodos os testes passaram!" << std::endl;
     return 0;
 }
