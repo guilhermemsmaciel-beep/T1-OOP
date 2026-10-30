@@ -13,7 +13,8 @@
 
 // Símbolos usados nos arquivos de mapa (assets/mapas/*.txt)
 //   ' ' chão livre        '~' água          'P' onde o jogador nasce
-//   'O' lago (pescar)     '$' mercado       'L' loja de varas
+//   'O' lago (pescar)     '$' mercado       'L' loja
+//   'H' casa (dormir)     'N' NPC
 //   qualquer outro caractere é parede/decoração
 class Mapa {
 private:
@@ -36,6 +37,7 @@ public:
     Vector2 getSpawn() const;
 
     Vector2 getObjectPos(unsigned int index) const;  // lança MapaInvalidoException
+    Vector2 localizarObjeto(char simbolo) const;      // lança MapaInvalidoException
     char objetoEm(Vector2 pos) const;                // '\0' se não houver objeto
 
     void loadMapas(const std::vector<std::string>& arquivos);  // lança ArquivoMapaException

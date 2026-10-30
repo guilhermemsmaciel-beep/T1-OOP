@@ -30,6 +30,15 @@ Vector2 Mapa::getObjectPos(unsigned int index) const {
     }
 }
 
+Vector2 Mapa::localizarObjeto(char simbolo) const {
+    auto it = std::find_if(objetos.begin(), objetos.end(),
+                           [simbolo](const Object& obj) { return obj.getSimbolo() == simbolo; });
+    if (it == objetos.end())
+        throw MapaInvalidoException(std::string("nao ha objeto '") + simbolo +
+                                    "' no mapa '" + current_ID + "'");
+    return it->getPos();
+}
+
 char Mapa::objetoEm(Vector2 pos) const {
     // LAMBDA com std::find_if
     auto it = std::find_if(objetos.begin(), objetos.end(),
@@ -76,7 +85,7 @@ void Mapa::loadMapa() {
     for (unsigned int y = 0; y < current_mapa.size(); y++) {
         for (unsigned int x = 0; x < current_mapa[y].size(); x++) {
             char& c = current_mapa[y][x];
-            if (c == 'O' || c == '$' || c == 'L') {
+            if (c == 'O' || c == '$' || c == 'L' || c == 'H' || c == 'N') {
                 objetos.emplace_back(Vector2(x, y), c);
                 c = ' ';
             } else if (c == 'P') {
@@ -179,7 +188,7 @@ void Mapa::printMapa() const {
         tela[p.y][p.x] = '@';
     }
 
-    system("clear");
+    limparTela();
     for (const auto& linha : tela) {
         for (char c : linha) std::cout << c;
         std::cout << '\n';
