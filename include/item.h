@@ -1,27 +1,25 @@
 #ifndef ITEM_H
 #define ITEM_H
 
-#include <iostream>
 #include <string>
 
+// Classe base de tudo que pode ir para o inventário do pescador
 class Item {
 protected:
     std::string nome;
     std::string descricao;
-    unsigned int valor;
+    float valor;
+
 public:
-    Item() : valor(5) {}
+    Item();
+    Item(const std::string& name, const std::string& desc, float valor = 0);
+    virtual ~Item() = default;
 
-    Item(std::string name, std::string desc) : valor(5), nome(name), descricao(desc) {}
+    std::string getNome() const;
+    float getValor() const;
 
-    std::string getNome() {
-        return nome;
-    }
-
-    void itemDescription() {
-        std::cout << nome << std::endl;
-        std::cout << descricao << std::endl;
-    }
+    // virtual: as classes filhas podem mostrar informações extras
+    virtual void itemDescription() const;
 };
 
 #endif
