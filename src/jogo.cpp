@@ -1,10 +1,13 @@
 #include "jogo.h"
 #include "excecoes.h"
+#include "fisgada.h"
 
-#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
+#include <sys/select.h>
+#include <termios.h>
+#include <unistd.h>
 
 // O jogo roda com o terminal em modo "cbreak" (sem Enter e sem eco),
 // assim cada tecla chega na hora. O modo normal só volta para digitar o nome.
@@ -16,27 +19,48 @@ void Jogo::modoTexto() {
     system("stty sane");
 }
 
-// LAMBDA: lê uma única tecla
+// LAMBDA: lê uma única tecla (espera até o jogador apertar)
 static auto lerTecla = []() -> char {
-    return static_cast<char>(std::getchar());
+    char c = 0;
+    if (read(STDIN_FILENO, &c, 1) != 1) return 0;
+    return c;
 };
+
+// Espera uma tecla por no máximo 'ms' milissegundos. Devolve -1 se nada foi apertado.
+// Usada no minigame de fisgada, em que a barra precisa andar sozinha.
+static int lerTeclaComTimeout(unsigned int ms) {
+    fd_set leitura;
+    FD_ZERO(&leitura);
+    FD_SET(STDIN_FILENO, &leitura);
+    timeval espera{0, static_cast<suseconds_t>(ms * 1000)};
+
+    if (select(STDIN_FILENO + 1, &leitura, nullptr, nullptr, &espera) > 0)
+        return lerTecla();
+    return -1;
+}
 
 static void esperarTecla() {
     std::cout << "\n(aperte qualquer tecla para continuar)" << std::endl;
     lerTecla();
 }
 
-Jogo::Jogo(Pescador& p) : screen(nullptr), player(p), venceu(false) {}
+Jogo::Jogo(Pescador& p)
+    : screen(nullptr), npc(nullptr), player(p), dia(1), venceu(false),
+      rng(std::random_device{}()) {}
 
 void Jogo::game_preparation() {
     screen = std::make_unique<Mapa>(player);
     mapas.push_back("assets/mapas/vila.txt");
     mapas.push_back("assets/mapas/lago.txt");
     screen->loadMapas(mapas);
+
+    // o NPC fica onde está o 'N' no mapa da vila
+    screen->changeMapa("vila");
+    npc = std::make_unique<Npc>(screen->localizarObjeto('N'), "Seu Ze");
 }
 
 void Jogo::game_intro() {
-    system("clear");
+    limparTela();
     std::string nome;
     char answer = 'n';
 
@@ -60,26 +84,33 @@ void Jogo::game_intro() {
     player.addRod(std::make_unique<Rod>());
     player.getRod()->itemDescription();
 
-    std::cout << "\nSeu objetivo: pescar um DOURADO, o peixe que vive no fundo do lago." << std::endl;
-    std::cout << "Venda o que pescar no mercado ($) e compre varas melhores na loja (L)." << std::endl;
-    std::cout << "Cuidado: a cada ida ao lago os peixes guardados envelhecem!" << std::endl;
+    std::cout << "\nE leve tambem umas minhocas. Cada fisgada gasta uma isca.\n" << std::endl;
+    player.addIsca(std::make_unique<Isca>("Minhoca", "Isca simples. Aumenta um pouco a zona de fisgada.",
+                                          5, 2, 5));
+
+    std::cout << "Seu objetivo: pescar um DOURADO, o peixe que vive no fundo do lago." << std::endl;
+    std::cout << "- Ir ao lago gasta energia. Durma em casa (H) para recuperar." << std::endl;
+    std::cout << "- Ao dormir, um dia passa e os peixes guardados envelhecem." << std::endl;
+    std::cout << "- Venda no mercado ($), compre na loja (L) e fale com o Seu Ze (N)." << std::endl;
     esperarTecla();
 }
 
 void Jogo::printHUD() const {
     const Rod* rod = player.getRod();
-    std::cout << player.getNome()
-              << " | Carteira: $" << player.getCarteira()
-              << " | Estoque: " << player.getEstoque().size() << "/" << Pescador::CAPACIDADE_ESTOQUE;
+    std::cout << player.getNome() << " | Dia " << dia
+              << " | Energia " << player.getEnergia() << "/" << Pescador::ENERGIA_MAX
+              << " | $" << player.getCarteira()
+              << " | Estoque " << player.getEstoque().size() << "/" << Pescador::CAPACIDADE_ESTOQUE
+              << " | Iscas " << player.getTotalIscas() << '\n';
     if (rod != nullptr)
-        std::cout << " | Vara: " << rod->getNome()
-                  << " (prof. " << rod->getDepthLimit() << ")";
-    std::cout << '\n';
+        std::cout << "Vara: " << rod->getNome() << " (prof. " << rod->getDepthLimit()
+                  << ", alcance " << rod->getDistanceLimit() << ")\n";
 
     if (screen->getCurrentID() == "lago")
         std::cout << "[WASD] move o anzol  [E] volta para a vila";
     else
-        std::cout << "[WASD] anda  [I] inventario  [Q] sair   O = lago  $ = mercado  L = loja";
+        std::cout << "[WASD] anda  [I] inventario  [Q] sair\n"
+                     "O lago  $ mercado  L loja  H casa  N Seu Ze";
     std::cout << '\n';
 
     if (!mensagem.empty())
@@ -87,25 +118,54 @@ void Jogo::printHUD() const {
     std::cout.flush();
 }
 
-void Jogo::run_fishing_game() {
-    // ir ao lago faz o tempo passar: o estoque envelhece
-    player.envelhecerEstoque();
-    unsigned int podres = player.contarPodres();
+// Minigame de fisgada. Devolve true se o jogador puxou o peixe.
+bool Jogo::puxarPeixe(const Peixe& peixe) {
+    unsigned int bonus = player.usarIsca();
+    Fisgada fisgada(peixe.getDificuldade(), bonus, rng);
 
+    tcflush(STDIN_FILENO, TCIFLUSH);  // descarta teclas apertadas antes do minigame
+
+    limparTela();
+    std::cout << "Algo mordeu a isca! E um " << peixe.getNome()
+              << " [" << dificuldadeToString(peixe.getDificuldade()) << "]\n\n";
+    if (bonus > 0)
+        std::cout << "Sua isca deu +" << bonus << " na zona verde.\n";
+    else
+        std::cout << "Voce esta sem isca: a zona verde e menor.\n";
+    std::cout << "Aperte ESPACO quando o marcador | estiver na zona verde!\n\n";
+
+    while (!fisgada.esgotou()) {
+        std::cout << "\r  " << fisgada.desenhar() << std::flush;
+
+        int tecla = lerTeclaComTimeout(fisgada.getIntervaloMs());
+        if (tecla == ' ') {
+            bool acertou = fisgada.dentroDaZona();
+            std::cout << "\n\n";
+            return acertou;
+        }
+        fisgada.avancar();
+    }
+    std::cout << "\n\n";
+    return false;
+}
+
+void Jogo::run_fishing_game() {
     screen->changeMapa("lago");
     screen->spawnPeixes();
     player.setPos(screen->getSpawn());
     player.setAncora(screen->getSpawn());
 
     mensagem = "Encoste o anzol (J) em um peixe para fisga-lo.";
-    if (podres > 0)
-        mensagem += " Voce tem " + std::to_string(podres) + " peixe(s) podre(s) no estoque!";
 
-    // LAMBDA que captura 'this': tenta fisgar o peixe que está no anzol
+    // LAMBDA que captura 'this': se o anzol encostou num peixe, abre a fisgada
     auto tentarFisgar = [this]() {
         Peixe pescado(Vector2(), Dificuldade::Easy);
         if (!screen->pescarPeixeEm(player.getPos(), pescado)) return;
 
+        if (!puxarPeixe(pescado)) {
+            mensagem = "O " + pescado.getNome() + " escapou!";
+            return;
+        }
         try {
             player.guardarPeixe(pescado);
             mensagem = "Voce pescou um " + pescado.getNome() + "! (vale $" +
@@ -144,7 +204,7 @@ void Jogo::run_fishing_game() {
 }
 
 void Jogo::mercado() {
-    system("clear");
+    limparTela();
     std::cout << "=== MERCADO ===\n" << std::endl;
 
     if (player.getEstoque().empty()) {
@@ -172,12 +232,13 @@ void Jogo::mercado() {
 }
 
 void Jogo::loja() {
-    // Catálogo da loja: cada oferta guarda uma LAMBDA que fabrica a vara
+    // Catálogo: cada oferta guarda uma LAMBDA que fabrica o item.
+    // Varas e iscas são vendidas como Item (polimorfismo).
     struct Oferta {
         std::string nome;
         float preco;
-        unsigned int profundidade;
-        std::function<std::unique_ptr<Rod>()> criar;
+        unsigned int profundidade;  // 0 = não é vara
+        std::function<std::unique_ptr<Item>()> criar;
     };
 
     const std::vector<Oferta> ofertas = {
@@ -189,13 +250,24 @@ void Jogo::loja() {
              return std::make_unique<Rod>("Vara Lendaria",
                  "Dizem que com ela da para pescar ate o Dourado.", 150, 9, 14);
          }},
+        {"Minhoca x5", 5, 0, []() {
+             return std::make_unique<Isca>("Minhoca",
+                 "Isca simples. Aumenta um pouco a zona de fisgada.", 5, 2, 5);
+         }},
+        {"Isca Artificial x3", 20, 0, []() {
+             return std::make_unique<Isca>("Isca Artificial",
+                 "Brilha na agua. Aumenta bastante a zona de fisgada.", 20, 5, 3);
+         }},
     };
 
-    system("clear");
-    std::cout << "=== LOJA DE VARAS ===   Carteira: $" << player.getCarteira() << "\n" << std::endl;
-    for (unsigned int i = 0; i < ofertas.size(); i++)
-        std::cout << "[" << i + 1 << "] " << ofertas[i].nome << " - $" << ofertas[i].preco
-                  << " (profundidade " << ofertas[i].profundidade << ")" << std::endl;
+    limparTela();
+    std::cout << "=== LOJA ===   Carteira: $" << player.getCarteira() << "\n" << std::endl;
+    for (unsigned int i = 0; i < ofertas.size(); i++) {
+        std::cout << "[" << i + 1 << "] " << ofertas[i].nome << " - $" << ofertas[i].preco;
+        if (ofertas[i].profundidade > 0)
+            std::cout << " (profundidade " << ofertas[i].profundidade << ")";
+        std::cout << std::endl;
+    }
     std::cout << "[outra tecla] sair" << std::endl;
 
     char c = lerTecla();
@@ -206,32 +278,85 @@ void Jogo::loja() {
     }
 
     const Oferta& oferta = ofertas[escolha];
-    if (player.getRod() != nullptr && player.getRod()->getDepthLimit() >= oferta.profundidade) {
+    if (oferta.profundidade > 0 && player.getRod() != nullptr &&
+        player.getRod()->getDepthLimit() >= oferta.profundidade) {
         mensagem = "Voce ja tem uma vara igual ou melhor que essa.";
         return;
     }
 
     try {
-        player.comprarRod(oferta.criar());
-        mensagem = "Voce comprou a " + oferta.nome + "! Ela ja esta equipada.";
+        player.comprar(oferta.criar());
+        mensagem = "Voce comprou: " + oferta.nome + "!";
     } catch (const SaldoInsuficienteException& e) {
         mensagem = e.what();
     }
 }
 
+void Jogo::dormir() {
+    dia++;
+    player.descansar();
+    player.envelhecerEstoque();  // a noite passa e os peixes guardados envelhecem
+
+    mensagem = "Voce dormiu. Bom dia! Comecou o dia " + std::to_string(dia) + ".";
+    unsigned int podres = player.contarPodres();
+    if (podres > 0)
+        mensagem += " " + std::to_string(podres) + " peixe(s) do estoque apodreceram.";
+}
+
+void Jogo::falarComNpc() {
+    limparTela();
+    std::cout << "=== " << npc->getNome() << " ===\n\n";
+    std::cout << "\"" << npc->fala() << "\"\n" << std::endl;
+
+    if (!npc->temMissao()) {
+        esperarTecla();
+        mensagem = "Voce ja ajudou o " + npc->getNome() + " com tudo.";
+        return;
+    }
+
+    const Missao& missao = npc->missaoAtual();
+    unsigned int tenho = player.contarPeixes(missao.tipo);
+    std::cout << "Missao: " << missao.pedido << "\n";
+    std::cout << "Recompensa: $" << missao.recompensa << "\n";
+    std::cout << "Voce tem " << tenho << "/" << missao.quantidade
+              << " (peixes podres nao contam)\n" << std::endl;
+
+    if (tenho < missao.quantidade) {
+        mensagem = "Missao do " + npc->getNome() + ": " + missao.pedido;
+        esperarTecla();
+        return;
+    }
+
+    std::cout << "Entregar os peixes? (s/n) ";
+    char c = lerTecla();
+    std::cout << c << std::endl;
+    if (c != 's' && c != 'S') {
+        mensagem = "O " + npc->getNome() + " vai esperar.";
+        return;
+    }
+
+    float recompensa = missao.recompensa;
+    player.entregarPeixes(missao.tipo, missao.quantidade);
+    player.receber(recompensa);
+    npc->concluirMissao();
+    mensagem = "Missao concluida! O " + npc->getNome() + " te pagou $" +
+               std::to_string((int)recompensa) + ".";
+}
+
 void Jogo::run_game() {
     screen->changeMapa("vila");
     player.setPos(screen->getSpawn());
-    mensagem = "Va ate o lago (O) para pescar.";
+    mensagem = "Va ate o lago (O) para pescar, ou fale com o Seu Ze (N).";
+    bool sair = false;
 
-    while (player.isAlive() && !venceu) {
+    while (!venceu && !sair) {
         screen->printMapa();
         printHUD();
 
         char comando = lerTecla();
         if (comando == 'q' || comando == 'Q') break;
         if (comando == 'i' || comando == 'I') {
-            system("clear");
+            limparTela();
             player.printInventario();
             esperarTecla();
             continue;
@@ -241,19 +366,31 @@ void Jogo::run_game() {
         player.atualizarPos(comando, screen->getMapa());
 
         switch (screen->objetoEm(player.getPos())) {
-            case 'O': run_fishing_game(); break;
+            case 'O':
+                try {
+                    player.gastarEnergia(CUSTO_PESCA);
+                    run_fishing_game();
+                } catch (const SemEnergiaException& e) {
+                    mensagem = std::string(e.what()) + " Durma em casa (H).";
+                }
+                break;
             case '$': mercado(); break;
             case 'L': loja(); break;
+            case 'H': dormir(); break;
+            case 'N': falarComNpc(); break;
             default: continue;
         }
         // depois de interagir, o jogador volta um passo para não entrar de novo
         player.setPos(anterior);
     }
 
-    system("clear");
+    limparTela();
     if (venceu) {
-        std::cout << "PARABENS, " << player.getNome() << "! Voce pescou o Dourado!\n" << std::endl;
+        std::cout << "PARABENS, " << player.getNome() << "! Voce pescou o Dourado em "
+                  << dia << " dia(s)!\n" << std::endl;
     }
     std::cout << "Fim de jogo. Obrigado por jogar Fishz!" << std::endl;
+    std::cout << "Missoes concluidas para o " << npc->getNome() << ": "
+              << npc->missoesConcluidas() << std::endl;
     player.printInventario();
 }
