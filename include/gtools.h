@@ -1,7 +1,15 @@
 #ifndef GTOOLS_H
 #define GTOOLS_H
 
-// Ferramentas gerais do jogo (posição no grid)
+#include <iostream>
+
+// Ferramentas gerais do jogo (posição no grid e tela)
+
+// Limpa o terminal com um código ANSI (mais rápido que system("clear"),
+// o que evita a tela piscando no minigame de fisgada)
+inline void limparTela() {
+    std::cout << "\033[2J\033[H";
+}
 
 struct Vector2 {
     unsigned int x;
