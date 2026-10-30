@@ -43,4 +43,12 @@ public:
                         " peixes)! Va ao mercado vender antes de pescar mais.") {}
 };
 
+// Lançada ao tentar ir pescar sem energia suficiente
+class SemEnergiaException : public JogoException {
+public:
+    SemEnergiaException(unsigned int necessaria, unsigned int atual)
+        : JogoException("Sem energia: pescar gasta " + std::to_string(necessaria) +
+                        " e voce tem " + std::to_string(atual) + ".") {}
+};
+
 #endif

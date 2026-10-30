@@ -6,7 +6,7 @@
 #include <numeric>
 
 Pescador::Pescador()
-    : nome("Pescador"), vida_atual(100), posicao(), ancora(),
+    : nome("Pescador"), vida_atual(ENERGIA_MAX), posicao(), ancora(),
       equiped_rod(nullptr), carteira(0) {}
 
 Pescador::Pescador(const std::string& name) : Pescador() {
@@ -15,7 +15,16 @@ Pescador::Pescador(const std::string& name) : Pescador() {
 
 std::string Pescador::getNome() const { return nome; }
 void Pescador::setNome(const std::string& name) { nome = name; }
-bool Pescador::isAlive() const { return vida_atual > 0; }
+
+unsigned int Pescador::getEnergia() const { return vida_atual; }
+
+void Pescador::gastarEnergia(unsigned int qtd) {
+    if (qtd > vida_atual)
+        throw SemEnergiaException(qtd, vida_atual);
+    vida_atual -= qtd;
+}
+
+void Pescador::descansar() { vida_atual = ENERGIA_MAX; }
 
 Vector2 Pescador::getPos() const { return posicao; }
 unsigned int Pescador::getPosX() const { return posicao.x; }
@@ -80,21 +89,77 @@ void Pescador::addRod(std::unique_ptr<Rod> rod) {
     inventario.push_back(std::move(rod));  // e o inventário passa a ser o dono
 }
 
+void Pescador::addIsca(std::unique_ptr<Isca> isca) {
+    // LAMBDA + dynamic_cast: procura no inventário uma isca com o mesmo nome
+    auto it = std::find_if(inventario.begin(), inventario.end(),
+                           [&isca](const std::unique_ptr<Item>& item) {
+                               auto* existente = dynamic_cast<Isca*>(item.get());
+                               return existente != nullptr && existente->getNome() == isca->getNome();
+                           });
+    if (it != inventario.end())
+        static_cast<Isca*>(it->get())->adicionar(isca->getQuantidade());
+    else
+        inventario.push_back(std::move(isca));
+}
+
 const Rod* Pescador::getRod() const {
     return equiped_rod;
 }
 
-void Pescador::comprarRod(std::unique_ptr<Rod> rod) {
-    if (rod->getValor() > carteira)
-        throw SaldoInsuficienteException(rod->getValor(), carteira);
+// POLIMORFISMO: a loja vende Item, e o pescador descobre o tipo real
+// com dynamic_cast para saber se equipa (vara) ou empilha (isca)
+void Pescador::comprar(std::unique_ptr<Item> item) {
+    if (item->getValor() > carteira)
+        throw SaldoInsuficienteException(item->getValor(), carteira);
+    carteira -= item->getValor();
 
-    carteira -= rod->getValor();
-    addRod(std::move(rod));
+    if (auto* rod = dynamic_cast<Rod*>(item.get())) {
+        item.release();
+        addRod(std::unique_ptr<Rod>(rod));
+    } else if (auto* isca = dynamic_cast<Isca*>(item.get())) {
+        item.release();
+        addIsca(std::unique_ptr<Isca>(isca));
+    } else {
+        inventario.push_back(std::move(item));
+    }
+}
+
+unsigned int Pescador::usarIsca() {
+    // escolhe a isca com maior bônus que ainda tem unidades
+    Isca* melhor = nullptr;
+    for (auto& item : inventario) {
+        auto* isca = dynamic_cast<Isca*>(item.get());
+        if (isca != nullptr && isca->getQuantidade() > 0 &&
+            (melhor == nullptr || isca->getBonus() > melhor->getBonus()))
+            melhor = isca;
+    }
+    if (melhor == nullptr) return 0;
+
+    melhor->usar();
+    unsigned int bonus = melhor->getBonus();
+
+    // LAMBDA com remove_if: tira do inventário as iscas que acabaram
+    inventario.erase(std::remove_if(inventario.begin(), inventario.end(),
+                                    [](const std::unique_ptr<Item>& item) {
+                                        auto* isca = dynamic_cast<Isca*>(item.get());
+                                        return isca != nullptr && isca->getQuantidade() == 0;
+                                    }),
+                     inventario.end());
+    return bonus;
+}
+
+unsigned int Pescador::getTotalIscas() const {
+    unsigned int total = 0;
+    for (const auto& item : inventario)
+        if (auto* isca = dynamic_cast<const Isca*>(item.get()))
+            total += isca->getQuantidade();
+    return total;
 }
 
 void Pescador::printInventario() const {
     std::cout << "\n=== Inventario de " << nome << " ===" << std::endl;
-    std::cout << "Carteira: $" << carteira << std::endl;
+    std::cout << "Carteira: $" << carteira << " | Energia: " << vida_atual
+              << "/" << ENERGIA_MAX << std::endl;
 
     std::cout << "\nItens:" << std::endl;
     for (const auto& item : inventario) {
@@ -147,10 +212,35 @@ float Pescador::venderEstoque() {
     return ganho;
 }
 
+unsigned int Pescador::contarPeixes(Dificuldade tipo) const {
+    return std::count_if(estoque.begin(), estoque.end(), [tipo](const Peixe& p) {
+        return p.getDificuldade() == tipo && p.getValidade() != Validade::Podre;
+    });
+}
+
+bool Pescador::entregarPeixes(Dificuldade tipo, unsigned int qtd) {
+    if (contarPeixes(tipo) < qtd) return false;
+
+    unsigned int removidos = 0;
+    for (auto it = estoque.begin(); it != estoque.end() && removidos < qtd;) {
+        if (it->getDificuldade() == tipo && it->getValidade() != Validade::Podre) {
+            it = estoque.erase(it);
+            removidos++;
+        } else {
+            ++it;
+        }
+    }
+    return true;
+}
+
 const std::vector<Peixe>& Pescador::getEstoque() const {
     return estoque;
 }
 
 float Pescador::getCarteira() const {
     return carteira;
+}
+
+void Pescador::receber(float valor) {
+    carteira += valor;
 }
