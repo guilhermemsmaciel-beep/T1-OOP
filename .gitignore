@@ -1,0 +1,11 @@
+# Artefatos de compilação
+build/
+fishz
+*.o
+*.out
+*.exe
+
+# Sistema / editores
+.DS_Store
+.vscode/
+.idea/
