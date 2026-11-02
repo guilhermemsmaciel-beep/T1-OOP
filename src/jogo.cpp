@@ -71,7 +71,7 @@ void Jogo::game_intro() {
         std::getline(std::cin, nome);
         modoJogo();
         if (nome.empty()) continue;
-        std::cout << "Tem certeza que quer se chamar " << nome << "? (s/n) ";
+        std::cout << "Tem certeza que quer se chamar " << nome << "? (s/n) " std::flush;
         answer = lerTecla();
         std::cout << answer << std::endl;
     }
@@ -220,7 +220,7 @@ void Jogo::mercado() {
     if (podres > 0)
         std::cout << "\n" << podres << " peixe(s) podre(s) vao para o lixo." << std::endl;
 
-    std::cout << "\nVender tudo? (s/n) ";
+    std::cout << "\nVender tudo? (s/n) " << std::flush; 
     char c = lerTecla();
     std::cout << c << std::endl;
     if (c == 's' || c == 'S') {
@@ -327,7 +327,7 @@ void Jogo::falarComNpc() {
         return;
     }
 
-    std::cout << "Entregar os peixes? (s/n) ";
+    std::cout << "Entregar os peixes? (s/n) " << std::flush;
     char c = lerTecla();
     std::cout << c << std::endl;
     if (c != 's' && c != 'S') {
